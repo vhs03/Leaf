@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: vhs03 <niclas.lehmann.test@outlook.de>
+Date: Thu, 16 Jul 2026 00:30:18 +0200
+Subject: [PATCH] Player Update Interval Setting and Async Entity Tracker
+ Blacklist
+
+
+diff --git a/net/minecraft/server/level/ChunkMap.java b/net/minecraft/server/level/ChunkMap.java
+index ace8962353cb54fce23f696157524d615c89a762..6f9b484b03dd92b6f894d8b423131fe06e60d48e 100644
+--- a/net/minecraft/server/level/ChunkMap.java
++++ b/net/minecraft/server/level/ChunkMap.java
+@@ -1010,7 +1010,7 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+             int i = type.clientTrackingRange() * 16;
+             i = org.spigotmc.TrackingRange.getEntityTrackingRange(entity, i); // Spigot
+             if (i != 0) {
+-                int updateInterval = type.updateInterval();
++                int updateInterval = entity instanceof ServerPlayer ? org.dreeam.leaf.config.modules.gameplay.PlayerUpdateInterval.playerUpdateInterval : type.updateInterval(); // Leaf - Configurable player update interval
+                 if (this.entityMap.containsKey(entity.getId())) {
+                     throw (IllegalStateException)Util.pauseInIde(new IllegalStateException("Entity is already tracked!"));
+                 } else {
+@@ -1265,7 +1265,7 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+             }
+         }
+ 
+-        public final Set<ServerPlayerConnection> seenBy = org.dreeam.leaf.config.modules.async.MultithreadedTracker.enabled ? it.unimi.dsi.fastutil.objects.ReferenceSets.synchronize(new SeenBySet()) : new SeenBySet(); // Paper - Perf: optimise map impl
++        public final Set<ServerPlayerConnection> seenBy; // Paper - Perf: optimise map impl
+         private volatile boolean seenByUpdated = false;
+         private volatile ServerPlayerConnection[] seenByArray = EMPTY_OBJECT_ARRAY;
+         public ServerPlayerConnection[] seenBy() {
+@@ -1377,6 +1377,7 @@ public class ChunkMap extends SimpleRegionStorage implements ChunkHolder.PlayerP
+         // Paper end - optimise entity tracker
+ 
+         public TrackedEntity(final Entity entity, final int range, final int updateInterval, final boolean trackDelta) {
++            this.seenBy = org.dreeam.leaf.config.modules.async.MultithreadedTracker.enabled && !org.dreeam.leaf.config.modules.async.MultithreadedTracker.isBlacklisted(entity.getType()) ? it.unimi.dsi.fastutil.objects.ReferenceSets.synchronize(new SeenBySet()) : new SeenBySet(); // Leaf - Async tracker entity blacklist
+             this.serverEntity = new ServerEntity(ChunkMap.this.level, entity, updateInterval, trackDelta, this, this.seenBy); // Paper
+             this.entity = entity;
+             this.range = range;

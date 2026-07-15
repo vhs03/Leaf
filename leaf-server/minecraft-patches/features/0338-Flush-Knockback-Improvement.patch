@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: vhs03 <niclas.lehmann.test@outlook.de>
+Date: Thu, 16 Jul 2026 00:25:20 +0200
+Subject: [PATCH] Flush Knockback Improvement
+
+
+diff --git a/net/minecraft/world/entity/player/Player.java b/net/minecraft/world/entity/player/Player.java
+index a329075e246f084cd31dbd3ff233d54a46ce56e2..a3d90f50182a074f3767dc0f63949773bf9dbaf5 100644
+--- a/net/minecraft/world/entity/player/Player.java
++++ b/net/minecraft/world/entity/player/Player.java
+@@ -1284,11 +1284,13 @@ public abstract class Player extends Avatar implements ContainerUser {
+             if (!cancelled) {
+             // Leaf start - Flush location while knockback
+             if (org.dreeam.leaf.config.modules.gameplay.Knockback.flushKnockback) {
+-                target.needsSync = true;
+                 net.minecraft.server.level.ChunkMap.TrackedEntity targetTrackedEntity = target.moonrise$getTrackedEntity();
+                 if (targetTrackedEntity != null) {
+-                    targetTrackedEntity.serverEntity.sendChanges();
++                    targetTrackedEntity.sendToTrackingPlayersAndSelf(new ClientboundSetEntityMotionPacket(target));
++                } else {
++                    ((ServerPlayer) target).connection.send(new ClientboundSetEntityMotionPacket(target));
+                 }
++                target.needsSync = false;
+             } else {
+                 ((ServerPlayer) target).connection.send(new ClientboundSetEntityMotionPacket(target));
+             }

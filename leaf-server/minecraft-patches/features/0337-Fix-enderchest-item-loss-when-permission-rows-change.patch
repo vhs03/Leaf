@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: vhs03 <niclas.lehmann.test@outlook.de>
+Date: Wed, 15 Jul 2026 21:04:05 +0200
+Subject: [PATCH] Fix enderchest item loss when permission rows change
+
+
+diff --git a/net/minecraft/world/inventory/PlayerEnderChestContainer.java b/net/minecraft/world/inventory/PlayerEnderChestContainer.java
+index 1ef8696003e62af8dfd59340dd9cce76920b45f6..34bd1b77329d915f75aecbca8c591d43e7245313 100644
+--- a/net/minecraft/world/inventory/PlayerEnderChestContainer.java
++++ b/net/minecraft/world/inventory/PlayerEnderChestContainer.java
+@@ -47,19 +47,19 @@ public class PlayerEnderChestContainer extends SimpleContainer {
+     }
+ 
+     public void fromSlots(ValueInput.TypedInputList<ItemStackWithSlot> input) {
+-        for (int i = 0; i < this.getContainerSize(); i++) {
++        for (int i = 0; i < super.getContainerSize(); i++) {
+             this.setItem(i, ItemStack.EMPTY);
+         }
+ 
+         for (ItemStackWithSlot itemStackWithSlot : input) {
+-            if (itemStackWithSlot.isValidInContainer(this.getContainerSize())) {
++            if (itemStackWithSlot.isValidInContainer(super.getContainerSize())) {
+                 this.setItem(itemStackWithSlot.slot(), itemStackWithSlot.stack());
+             }
+         }
+     }
+ 
+     public void storeAsSlots(ValueOutput.TypedOutputList<ItemStackWithSlot> output) {
+-        for (int i = 0; i < this.getContainerSize(); i++) {
++        for (int i = 0; i < super.getContainerSize(); i++) {
+             ItemStack item = this.getItem(i);
+             if (!item.isEmpty()) {
+                 output.add(new ItemStackWithSlot(i, item));
