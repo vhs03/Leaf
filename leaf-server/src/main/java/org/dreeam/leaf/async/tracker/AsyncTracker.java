@@ -1,11 +1,15 @@
 package org.dreeam.leaf.async.tracker;
 
 import ca.spottedleaf.moonrise.patches.chunk_system.level.entity.server.ServerEntityLookup;
+import ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity;
+import ca.spottedleaf.moonrise.patches.chunk_system.level.chunk.ChunkData;
+import ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerEntity;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
 import net.minecraft.server.level.ChunkMap;
+import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerPlayerConnection;
@@ -59,8 +63,19 @@ public final class AsyncTracker {
         }
         Entity[] trackerEntitiesRaw = trackerEntities.getRawDataUnchecked();
         Entity[] entities = new Entity[trackerEntitiesSize];
-        System.arraycopy(trackerEntitiesRaw, 0, entities, 0, trackerEntitiesSize);
-        EntitySlice slice = new EntitySlice(entities);
+        int entitiesSize = 0;
+        for (int i = 0; i < trackerEntitiesSize; i++) {
+            Entity entity = trackerEntitiesRaw[i];
+            if (MultithreadedTracker.isBlacklisted(entity.getType())) {
+                tickSynchronously(entity);
+            } else {
+                entities[entitiesSize++] = entity;
+            }
+        }
+        if (entitiesSize == 0) {
+            return;
+        }
+        EntitySlice slice = new EntitySlice(entities, 0, entitiesSize);
         EntitySlice[] slices = entities.length <= THREADS * MIN_CHUNK ? slice.chunks(MIN_CHUNK) : slice.splitEvenly(THREADS);
         @SuppressWarnings("unchecked")
         Future<TrackerCtx>[] futures = new Future[slices.length];
@@ -69,6 +84,23 @@ public final class AsyncTracker {
         }
         TRACKER_EXECUTOR.unpack();
         this.fut = futures;
+    }
+
+    private static void tickSynchronously(Entity entity) {
+        ChunkMap.TrackedEntity tracker = ((EntityTrackerEntity) entity).moonrise$getTrackedEntity();
+        if (tracker == null) {
+            return;
+        }
+        ChunkData chunkData = ((ChunkSystemEntity) entity).moonrise$getChunkData();
+        tracker.moonrise$tick(chunkData == null ? null : chunkData.nearbyPlayers);
+        if (tracker.moonrise$hasPlayers()) {
+            tracker.serverEntity.sendChanges();
+            return;
+        }
+        FullChunkStatus status = ((ChunkSystemEntity) entity).moonrise$getChunkStatus();
+        if (status != null && status.isOrAfter(FullChunkStatus.ENTITY_TICKING)) {
+            tracker.serverEntity.sendChanges();
+        }
     }
 
     private static void handlePlayer(ServerLevel world) {
