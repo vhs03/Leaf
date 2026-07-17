@@ -30,6 +30,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.MapItem;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
+import org.dreeam.leaf.config.modules.async.MultithreadedTracker;
 import org.dreeam.leaf.util.map.AttributeInstanceArrayMap;
 import org.jspecify.annotations.NullMarked;
 
@@ -64,6 +65,11 @@ public final class TrackerCtx {
     }
 
     public void stopSeenByPlayer(ServerPlayerConnection connection, Entity entity) {
+        if (MultithreadedTracker.isBlacklisted(entity.getType())) {
+            entity.stopSeenByPlayer(connection.getPlayer());
+            connection.send(new ClientboundRemoveEntitiesPacket(entity.getId()));
+            return;
+        }
         if (stopSeen.isEmpty() || !stopSeen.getLast().e.equals(entity)) {
             stopSeen.add(new StopSeen(entity, new ObjectArrayList<>()));
         }

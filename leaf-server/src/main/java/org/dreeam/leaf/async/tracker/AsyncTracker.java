@@ -1,19 +1,19 @@
 package org.dreeam.leaf.async.tracker;
 
-import ca.spottedleaf.moonrise.patches.chunk_system.level.entity.server.ServerEntityLookup;
 import ca.spottedleaf.moonrise.patches.chunk_system.entity.ChunkSystemEntity;
 import ca.spottedleaf.moonrise.patches.chunk_system.level.chunk.ChunkData;
+import ca.spottedleaf.moonrise.patches.chunk_system.level.entity.server.ServerEntityLookup;
 import ca.spottedleaf.moonrise.patches.entity_tracker.EntityTrackerEntity;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
 import net.minecraft.server.level.ChunkMap;
-import net.minecraft.server.level.FullChunkStatus;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerPlayerConnection;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import org.bukkit.event.player.PlayerVelocityEvent;
 import org.dreeam.leaf.async.FixedThreadExecutor;
 import org.dreeam.leaf.config.modules.async.MultithreadedTracker;
@@ -21,6 +21,7 @@ import org.dreeam.leaf.util.EntitySlice;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
+import java.util.Set;
 import java.util.concurrent.*;
 
 @NullMarked
@@ -63,19 +64,35 @@ public final class AsyncTracker {
         }
         Entity[] trackerEntitiesRaw = trackerEntities.getRawDataUnchecked();
         Entity[] entities = new Entity[trackerEntitiesSize];
-        int entitiesSize = 0;
-        for (int i = 0; i < trackerEntitiesSize; i++) {
-            Entity entity = trackerEntitiesRaw[i];
-            if (MultithreadedTracker.isBlacklisted(entity.getType())) {
-                tickSynchronously(entity);
-            } else {
-                entities[entitiesSize++] = entity;
+        System.arraycopy(trackerEntitiesRaw, 0, entities, 0, trackerEntitiesSize);
+
+        final Set<EntityType<?>> blacklistTypes = MultithreadedTracker.getBlacklistedTypes();
+        if (!blacklistTypes.isEmpty()) {
+            int blacklistCount = 0;
+            for (int i = 0; i < entities.length; i++) {
+                if (blacklistTypes.contains(entities[i].getType())) {
+                    blacklistCount++;
+                }
+            }
+            if (blacklistCount > 0) {
+                Entity[] filtered = new Entity[entities.length - blacklistCount];
+                int idx = 0;
+                for (int i = 0; i < entities.length; i++) {
+                    Entity entity = entities[i];
+                    if (blacklistTypes.contains(entity.getType())) {
+                        processSyncEntity(world, entity);
+                    } else {
+                        filtered[idx++] = entity;
+                    }
+                }
+                if (idx == 0) {
+                    return;
+                }
+                entities = filtered;
             }
         }
-        if (entitiesSize == 0) {
-            return;
-        }
-        EntitySlice slice = new EntitySlice(entities, 0, entitiesSize);
+
+        EntitySlice slice = new EntitySlice(entities);
         EntitySlice[] slices = entities.length <= THREADS * MIN_CHUNK ? slice.chunks(MIN_CHUNK) : slice.splitEvenly(THREADS);
         @SuppressWarnings("unchecked")
         Future<TrackerCtx>[] futures = new Future[slices.length];
@@ -86,21 +103,18 @@ public final class AsyncTracker {
         this.fut = futures;
     }
 
-    private static void tickSynchronously(Entity entity) {
-        ChunkMap.TrackedEntity tracker = ((EntityTrackerEntity) entity).moonrise$getTrackedEntity();
+    private void processSyncEntity(ServerLevel world, Entity entity) {
+        final ChunkMap.TrackedEntity tracker = ((EntityTrackerEntity) entity).moonrise$getTrackedEntity();
         if (tracker == null) {
             return;
         }
-        ChunkData chunkData = ((ChunkSystemEntity) entity).moonrise$getChunkData();
-        tracker.moonrise$tick(chunkData == null ? null : chunkData.nearbyPlayers);
-        if (tracker.moonrise$hasPlayers()) {
-            tracker.serverEntity.sendChanges();
+        if (tracker.getClass() != ChunkMap.TrackedEntity.class) {
+            this.local.citizensEntity(tracker);
             return;
         }
-        FullChunkStatus status = ((ChunkSystemEntity) entity).moonrise$getChunkStatus();
-        if (status != null && status.isOrAfter(FullChunkStatus.ENTITY_TICKING)) {
-            tracker.serverEntity.sendChanges();
-        }
+        final ChunkData chunkData = ((ChunkSystemEntity) entity).moonrise$getChunkData();
+        tracker.moonrise$tick(chunkData == null ? null : chunkData.nearbyPlayers);
+        tracker.serverEntity.sendChanges();
     }
 
     private static void handlePlayer(ServerLevel world) {
